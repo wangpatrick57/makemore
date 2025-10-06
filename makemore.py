@@ -5,7 +5,8 @@ START = "<S>"
 END = "<E>"
 
 names = open("names.txt").read().splitlines()
-vocab = {strr: idx for idx, strr in enumerate(set("".join(names)) | {START, END})}
+chars = sorted(set("".join(names)))
+vocab = {strr: idx for idx, strr in enumerate(chars + [START, END])}
 counts = torch.zeros((len(vocab), len(vocab)), dtype=torch.int32)
 
 for name in names:
