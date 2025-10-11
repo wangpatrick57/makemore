@@ -17,38 +17,72 @@ def read_examples(dataset_path: Path) -> list[str]:
 def build_vocab(examples: list[str]) -> tuple[dict[str, int], dict[int, str]]:
     """
     Returns a mapping from each unique character that appears amongst the examples to a
-    canonical integer representing that character. Includes the separator character
-    (SEP) as well, representing the start/end of an example. Returns the reverse
-    mapping as the second return value.
+    canonical token representing that character. Includes the separator character (SEP)
+    as well, representing the start/end of an example. Returns the reverse mapping as
+    the second return value.
 
     As a convention, we sort the characters alphabetically and put SEP last.
     """
     chars = sorted(set("".join(examples)))
-    stoi = {s: i for i, s in enumerate([SEP] + chars)}
-    itos = {i: s for s, i in stoi.items()}
-    return stoi, itos
+    enc = {s: tok for tok, s in enumerate([SEP] + chars)}
+    dec = {tok: s for s, tok in enc.items()}
+    return enc, dec
 
 
-def build_bigram_model(examples: list[str], stoi: dict[str, int]) -> torch.Tensor:
+def encode(example: str, enc: dict[str, int]) -> list[int]:
+    """
+    Encodes an example as a list of tokens with SEP at the start and the end.
+    """
+    return [enc[SEP]] + [enc[s] for s in example] + [enc[SEP]]
+
+
+def decode(tokens: list[int], dec: dict[int, str]) -> str:
+    """
+    Decodes a list of tokens (that begin and end with SEP) into an example.
+    """
+    assert dec[tokens[0]] == SEP and dec[tokens[-1]] == SEP
+    return "".join(dec[token] for token in tokens[1:-1])
+
+
+def build_bigram_model(examples: list[str], enc: dict[str, int]) -> torch.Tensor:
     """
     Returns the bigram model, which is an NxN Tensor where N is the vocab size. Each
     row (i, j) of the Tensor is a probability distribution representing the probability
     of j appearing after i amongst the examples.
     """
-    bigram = torch.zeros((len(stoi), len(stoi)), dtype=torch.int32)
+    bigram = torch.zeros((len(enc), len(enc)), dtype=torch.float32)
 
-    for inpt in examples:
-        inpt = [SEP] + list(inpt) + [SEP]
+    for example in examples:
+        tokens = encode(example, enc)
 
-        for str1, str2 in zip(inpt, inpt[1:]):
-            idx1, idx2 = stoi[str1], stoi[str2]
-            bigram[idx1, idx2] += 1
+        for tok1, tok2 in zip(tokens, tokens[1:]):
+            bigram[tok1, tok2] += 1
 
+    bigram /= bigram.sum(dim=1, keepdim=True)
     return bigram
+
+
+def generate_example(
+    bigram: torch.Tensor, enc: dict[str, int], dec: dict[int, str]
+) -> str:
+    """
+    Generate an example probabilistically using the bigram model. Starts with the SEP
+    character and generates new characters based on the probability distribution for
+    the most recently generated character in bigram. Stops when SEP is generated.
+    """
+    tokens = [enc[SEP]]
+
+    while True:
+        tokens.append(torch.multinomial(bigram[tokens[-1]], 1).item())
+
+        if tokens[-1] == enc[SEP]:
+            return decode(tokens, dec)
 
 
 if __name__ == "__main__":
     examples = read_examples(Path("names.txt"))
-    stoi, itos = build_vocab(examples)
-    bigram = build_bigram_model(examples, stoi)
-    print(bigram)
+    enc, dec = build_vocab(examples)
+    bigram = build_bigram_model(examples, enc)
+
+    for _ in range(10):
+        print(generate_example(bigram, enc, dec))
