@@ -63,7 +63,10 @@ def build_bigram_model(examples: list[str], enc: dict[str, int]) -> torch.Tensor
 
 
 def generate_example(
-    bigram: torch.Tensor, enc: dict[str, int], dec: dict[int, str]
+    bigram: torch.Tensor,
+    enc: dict[str, int],
+    dec: dict[int, str],
+    generator: torch.Generator | None = None,
 ) -> str:
     """
     Generate an example probabilistically using the bigram model. Starts with the SEP
@@ -73,7 +76,9 @@ def generate_example(
     tokens = [enc[SEP]]
 
     while True:
-        tokens.append(torch.multinomial(bigram[tokens[-1]], 1).item())
+        tokens.append(
+            torch.multinomial(bigram[tokens[-1]], 1, generator=generator).item()
+        )
 
         if tokens[-1] == enc[SEP]:
             return decode(tokens, dec)
@@ -83,6 +88,7 @@ if __name__ == "__main__":
     examples = read_examples(Path("names.txt"))
     enc, dec = build_vocab(examples)
     bigram = build_bigram_model(examples, enc)
+    generator = torch.Generator().manual_seed(2147483647)
 
     for _ in range(10):
-        print(generate_example(bigram, enc, dec))
+        print(generate_example(bigram, enc, dec, generator=generator))
